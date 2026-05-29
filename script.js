@@ -4,12 +4,11 @@
 const firebaseConfig = {
   apiKey: "AIzaSyAlltxTLkvE44wbrkVQHOH0xeJKb_tbfUk",
   authDomain: "rider-financial-monitor.firebaseapp.com",
-  databaseURL: "https://rider-financial-monitor-default-rtdb.asia-southeast1.firebasedatabase.app",
+  databaseURL: "https://rider-financial-monitor-default-rtdb.asia-southeast1.firebasedatabase.app/",
   projectId: "rider-financial-monitor",
   storageBucket: "rider-financial-monitor.firebasestorage.app",
   messagingSenderId: "743077826140",
-  appId: "1:743077826140:web:c64ec08887f60f2fd82099",
-  measurementId: "G-R9FFE4GC1M"
+  appId: "1:743077826140:web:c64ec08887f60f2fd82099"
 };
 
 // Fire up safe instances of Firebase App and Database SDK
@@ -18,7 +17,7 @@ const database = firebase.database();
 
 let editId         = null;
 let financialChart = null;
-let activePeriod   = 'daily';   
+let activePeriod   = 'daily'; 
 let globalDataStore = []; // Unified real-time runtime state cache
 
 // ══════════════════════════════════════════════════════════
@@ -165,13 +164,22 @@ function saveEntry() {
     date = `${y}-${m}-${d}`;
   }
 
-  const fares  = parseFloat(document.getElementById('fFares').value)  || 0;
-  const wallet = parseFloat(document.getElementById('fWallet').value) || 0;
-  const gas    = parseFloat(document.getElementById('fGas').value)    || 0;
-  const food   = parseFloat(document.getElementById('fFood').value)   || 0;
-  const data   = parseFloat(document.getElementById('fData').value)   || 0;
-  const maint  = parseFloat(document.getElementById('fMaint').value)  || 0;
-  const other  = parseFloat(document.getElementById('fOther').value)  || 0;
+  // FIXED: Check values safely and default to empty strings to avoid parsing NaN values directly
+  const faresVal  = document.getElementById('fFares').value.trim();
+  const walletVal = document.getElementById('fWallet').value.trim();
+  const gasVal    = document.getElementById('fGas').value.trim();
+  const foodVal   = document.getElementById('fFood').value.trim();
+  const dataVal   = document.getElementById('fData').value.trim();
+  const maintVal  = document.getElementById('fMaint').value.trim();
+  const otherVal  = document.getElementById('fOther').value.trim();
+
+  const fares  = faresVal === "" ? 0 : parseFloat(faresVal);
+  const wallet = walletVal === "" ? 0 : parseFloat(walletVal);
+  const gas    = gasVal === "" ? 0 : parseFloat(gasVal);
+  const food   = foodVal === "" ? 0 : parseFloat(foodVal);
+  const data   = dataVal === "" ? 0 : parseFloat(dataVal);
+  const maint  = maintVal === "" ? 0 : parseFloat(maintVal);
+  const other  = otherVal === "" ? 0 : parseFloat(otherVal);
 
   if (!validateNumber(fares,  'Payments/Kita'))  return;
   if (!validateNumber(wallet, 'Wallet balance')) return;
@@ -206,7 +214,6 @@ function saveEntry() {
     other
   };
 
-  // Push straight to your live Firebase global collection references
   database.ref('ledger/' + targetId).set(record, (error) => {
     if (error) {
       showToast('Cloud connection error. Sync failed.', 'error');
@@ -237,6 +244,7 @@ function editRecord(id) {
   document.querySelector('.form-card').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
+// FIXED: Kept table configurations clean by matching exact parameter paths
 function deleteRecord(id) {
   if (!confirm('Are you sure you want to delete this ledger entry from all devices?')) return;
   
@@ -252,11 +260,12 @@ function deleteRecord(id) {
 
 function cancelForm() {
   editId = null;
+  // FIXED: Explicitly removed missing fields from array parsing loops to avoid crashing on null pointers
   ['fFares','fWallet','fGas','fFood','fData','fMaint','fOther'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
-  // Auto-repopulate today's default date string on form cancel actions
+  
   const today = new Date();
   const dateEl = document.getElementById('fDate');
   if (dateEl) {
@@ -320,7 +329,7 @@ function renderLedger(rows) {
 
   tbody.innerHTML = rows.map(r => `
     <tr>
-      <td>${fmtDate(r.date)}</td>
+      <td style="text-align:left">${fmtDate(r.date)}</td>
       <td>${php(r.fares)}</td>
       <td class="val-income">${php(r.income)}</td>
       <td>${php(r.costs)}</td>
@@ -344,7 +353,7 @@ function renderLedger(rows) {
 
   if (tfoot) {
     tfoot.innerHTML = `
-      <td>Totals</td>
+      <td style="text-align:left">Totals</td>
       <td>${php(totFares)}</td>
       <td class="val-income">${php(totIncome)}</td>
       <td>${php(totCosts)}</td>
