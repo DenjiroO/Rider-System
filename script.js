@@ -4,11 +4,12 @@
 const firebaseConfig = {
   apiKey: "AIzaSyAlltxTLkvE44wbrkVQHOH0xeJKb_tbfUk",
   authDomain: "rider-financial-monitor.firebaseapp.com",
-  databaseURL: "https://rider-financial-monitor-default-rtdb.asia-southeast1.firebasedatabase.app/",
+  databaseURL: "https://rider-financial-monitor-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "rider-financial-monitor",
   storageBucket: "rider-financial-monitor.firebasestorage.app",
   messagingSenderId: "743077826140",
-  appId: "1:743077826140:web:c64ec08887f60f2fd82099"
+  appId: "1:743077826140:web:c64ec08887f60f2fd82099",
+  measurementId: "G-R9FFE4GC1M"
 };
 
 // Fire up safe instances of Firebase App and Database SDK
