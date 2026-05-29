@@ -4,6 +4,7 @@
 const firebaseConfig = {
   apiKey: "AIzaSyAlltxTLkvE44wbrkVQHOH0xeJKb_tbfUk",
   authDomain: "rider-financial-monitor.firebaseapp.com",
+  databaseURL: "https://rider-financial-monitor-default-rtdb.asia-southeast1.firebasedatabase.app/",
   projectId: "rider-financial-monitor",
   storageBucket: "rider-financial-monitor.firebasestorage.app",
   messagingSenderId: "743077826140",
