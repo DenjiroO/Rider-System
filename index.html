@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rider Financial Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <div class="header-left">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        RIDER MONITOR
+      </div>
+      <div class="brand-sub">Daily Financial Ledger — Foodpanda Operations</div>
+    </div>
+    <div class="header-right">
+      <button class="chip active" data-period="daily"   onclick="setPeriod(this,'daily')">Daily</button>
+      <button class="chip"        data-period="weekly"  onclick="setPeriod(this,'weekly')">Weekly</button>
+      <button class="chip"        data-period="monthly" onclick="setPeriod(this,'monthly')">Monthly</button>
+      <button class="chip"        data-period="yearly"  onclick="setPeriod(this,'yearly')">Yearly</button>
+    </div>
+  </header>
+
+  <!-- ── KPI CARDS ── -->
+  <section aria-label="Performance Overview">
+    <p class="section-label">Performance Overview</p>
+    <div class="kpi-grid">
+      <div class="kpi-card blue">
+        <div class="kpi-label">Total Fares</div>
+        <div class="kpi-value" id="kFares">₱0.00</div>
+        <div class="kpi-sub"  id="kDays">0 active days</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">FP Income (×0.98)</div>
+        <div class="kpi-value" id="kIncome">₱0.00</div>
+        <div class="kpi-sub">after 2% platform cut</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">Total Costs</div>
+        <div class="kpi-value" id="kCosts">₱0.00</div>
+        <div class="kpi-sub"  id="kRatio">cost ratio: 0.0%</div>
+      </div>
+      <div class="kpi-card orange">
+        <div class="kpi-label">True Take-Home</div>
+        <div class="kpi-value" id="kNet">₱0.00</div>
+        <div class="kpi-sub"  id="kRemit">₱0.00 remittance due</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FORM ── -->
+  <section>
+    <div class="form-header">
+      <p class="section-label" style="margin:0">Log New Day</p>
+      <div style="display:flex;gap:8px;">
+        <button class="btn primary" onclick="saveEntry()" id="saveBtn">Save Entry</button>
+        <button class="btn"         onclick="cancelForm()">Cancel</button>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="fDate">Date</label>
+          <input type="date" id="fDate" />
+        </div>
+        <div class="form-group">
+          <label for="fFares">Total Fares (₱)</label>
+          <input type="number" id="fFares" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label for="fWallet">Wallet Balance (₱)</label>
+          <input type="number" id="fWallet" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label for="fGas">Fuel Cost (₱)</label>
+          <input type="number" id="fGas" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label for="fFood">Food / Snacks (₱)</label>
+          <input type="number" id="fFood" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label for="fData">Mobile Data (₱)</label>
+          <input type="number" id="fData" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label for="fMaint">Bike Maintenance (₱)</label>
+          <input type="number" id="fMaint" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label for="fOther">Other Expenses (₱)</label>
+          <input type="number" id="fOther" min="0" step="0.01" placeholder="0.00" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── LEDGER TABLE ── -->
+  <section>
+    <div class="table-header">
+      <p class="section-label" style="margin:0">Daily Ledger</p>
+      <button class="btn danger-btn" onclick="exportCSV()">Export CSV</button>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left">Date</th>
+              <th>Fares</th>
+              <th>Income</th>
+              <th>Costs</th>
+              <th>Take-Home</th>
+              <th>Wallet</th>
+              <th>Remittance</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="ledgerBody"></tbody>
+          <tfoot><tr id="ledgerFoot" class="tfoot-row"></tr></tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CHART ── -->
+  <section>
+    <p class="section-label">Income vs Costs</p>
+    <div class="chart-card">
+      <div class="chart-wrap">
+        <canvas id="trendChart"
+          aria-label="Line chart comparing FP income and total operating costs per day.">
+          Income vs costs trend.
+        </canvas>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /container -->
+
+<div id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
