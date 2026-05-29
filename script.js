@@ -1,45 +1,23 @@
-/* ============================================================
-   RIDER MONITOR — script.js
-   Original logic preserved:
-     - wallet field, other expenses field
-     - remittance = wallet - income  (your formula)
-     - string ID matching
-     - validateNumber() guards
-     - wallet >= income validation
-   Added:
-     - KPI overview cards
-     - Daily / Weekly / Monthly / Yearly period filter
-     - Totals footer row
-     - CSV export
-     - Refined toast (CSS-transition based)
-============================================================ */
+// ==========================================
+// 1. CLOUD DATABASE INITIALIZATION
+// ==========================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAlltxTLkvE44wbrkVQHOH0xeJKb_tbfUk",
+  authDomain: "rider-financial-monitor.firebaseapp.com",
+  projectId: "rider-financial-monitor",
+  storageBucket: "rider-financial-monitor.firebasestorage.app",
+  messagingSenderId: "743077826140",
+  appId: "1:743077826140:web:c64ec08887f60f2fd82099"
+};
 
-const STORAGE_KEY = 'rider_monitor_fixed';
+// Fire up safe instances of Firebase App and Database SDK
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
 
-let editId        = null;
+let editId         = null;
 let financialChart = null;
-let activePeriod  = 'daily';   // 'daily' | 'weekly' | 'monthly' | 'yearly'
-
-// ══════════════════════════════════════════════════════════
-// 1. DATA STORAGE UTILITIES
-// ══════════════════════════════════════════════════════════
-function loadData() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    showToast('Error loading data from storage.', 'error');
-    return [];
-  }
-}
-
-function saveDataToStorage(data) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    showToast('Error saving data to storage.', 'error');
-  }
-}
+let activePeriod   = 'daily';   
+let globalDataStore = []; // Unified real-time runtime state cache
 
 // ══════════════════════════════════════════════════════════
 // 2. VALIDATION & TOAST
@@ -62,9 +40,7 @@ function showToast(message, type = 'success') {
   const el = document.getElementById('toast');
   if (!el) return;
   el.textContent = message;
-  el.style.border = type === 'error'
-    ? '1px solid #ef4444'
-    : '1px solid #22c55e';
+  el.style.border = type === 'error' ? '1px solid #ef4444' : '1px solid #22c55e';
   el.style.color = type === 'error' ? '#f87171' : '#4ade80';
   el.classList.add('show');
   clearTimeout(_toastTimer);
@@ -72,7 +48,7 @@ function showToast(message, type = 'success') {
 }
 
 // ══════════════════════════════════════════════════════════
-// 3. FOODPANDA FORMULA — YOUR ORIGINAL LOGIC
+// 3. FOODPANDA FORMULA — CALCULATION CORE
 // ══════════════════════════════════════════════════════════
 function calculateRecord(record) {
   const kita         = parseFloat(record.fares)  || 0;
@@ -86,7 +62,7 @@ function calculateRecord(record) {
   const costs     = gas + food + dataExpense + maint + other;
   const income    = kita * 0.98;          // Payments/Kita − 2%
   const takeHome  = income - costs;
-  const remitted  = wallet - income;      // Wallet − Total Income  (your formula)
+  const remitted  = wallet - income;      // Wallet − Total Income (Your exact rule)
 
   return {
     ...record,
@@ -105,25 +81,20 @@ function calculateRecord(record) {
 }
 
 // ══════════════════════════════════════════════════════════
-// 4. PERIOD FILTER
+// 4. PERIOD FILTER AGGREGATIONS
 // ══════════════════════════════════════════════════════════
 function setPeriod(el, period) {
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
   activePeriod = period;
-  render();
+  processAndRender(globalDataStore);
 }
 
-/**
- * Returns a label that groups a date string into the active period.
- * Used to bucket rows for chart aggregation.
- */
 function periodKey(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
 
-  // ISO week number helper
   function isoWeek(dt) {
     const tmp = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
     tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
@@ -132,22 +103,21 @@ function periodKey(dateStr) {
   }
 
   switch (activePeriod) {
-    case 'daily':   return dateStr;                                           // 2026-05-28
-    case 'weekly':  return `${y}-W${String(isoWeek(d)).padStart(2,'0')}`;    // 2026-W22
-    case 'monthly': return `${y}-${m}`;                                       // 2026-05
-    case 'yearly':  return `${y}`;                                            // 2026
+    case 'daily':   return dateStr;
+    case 'weekly':  return `${y}-W${String(isoWeek(d)).padStart(2,'0')}`;
+    case 'monthly': return `${y}-${m}`;
+    case 'yearly':  return `${y}`;
     default:        return dateStr;
   }
 }
 
-/** Human-readable label shown on the chart x-axis */
 function periodLabel(key) {
   switch (activePeriod) {
     case 'daily': {
       const d = new Date(key + 'T00:00:00');
       return d.toLocaleDateString('en-PH', { month:'short', day:'numeric' });
     }
-    case 'weekly':  return key;       // e.g. 2026-W22
+    case 'weekly':  return key;
     case 'monthly': {
       const [yr, mo] = key.split('-');
       const d = new Date(parseInt(yr), parseInt(mo) - 1, 1);
@@ -158,10 +128,6 @@ function periodLabel(key) {
   }
 }
 
-/**
- * Aggregate rows by the active period.
- * Returns array of { key, label, fares, income, costs, takeHome, remitted, wallet, count }
- */
 function aggregateByPeriod(rows) {
   const map = new Map();
   rows.forEach(r => {
@@ -183,7 +149,7 @@ function aggregateByPeriod(rows) {
 }
 
 // ══════════════════════════════════════════════════════════
-// 5. CRUD HANDLERS  (your original logic, unchanged)
+// 5. CLOUD DATABASE CRUD OPERATION HANDLERS
 // ══════════════════════════════════════════════════════════
 function saveEntry() {
   const dateEl = document.getElementById('fDate');
@@ -224,9 +190,10 @@ function saveEntry() {
     return;
   }
 
-  const dataStore = loadData();
+  const targetId = editId ? String(editId) : String(Date.now());
+  
   const record = {
-    id: editId ? String(editId) : String(Date.now()),
+    id: targetId,
     date,
     fares,
     wallet,
@@ -234,29 +201,22 @@ function saveEntry() {
     food,
     data,
     maint,
-    other,
-    remitted: 0
+    other
   };
 
-  if (editId) {
-    const idx = dataStore.findIndex(item => String(item.id) === String(editId));
-    if (idx !== -1) {
-      dataStore[idx] = record;
-      showToast('Entry updated successfully.');
+  // Push straight to your live Firebase global collection references
+  database.ref('ledger/' + targetId).set(record, (error) => {
+    if (error) {
+      showToast('Cloud connection error. Sync failed.', 'error');
+    } else {
+      showToast(editId ? 'Entry updated across all devices.' : 'Entry added to Cloud.');
+      cancelForm();
     }
-  } else {
-    dataStore.push(record);
-    showToast('Entry added successfully.');
-  }
-
-  saveDataToStorage(dataStore);
-  render();
-  cancelForm();
+  });
 }
 
 function editRecord(id) {
-  const dataStore = loadData();
-  const record = dataStore.find(item => String(item.id) === String(id));
+  const record = globalDataStore.find(item => String(item.id) === String(id));
   if (!record) { showToast('Record not found.', 'error'); return; }
 
   editId = String(id);
@@ -272,17 +232,20 @@ function editRecord(id) {
   const btn = document.getElementById('saveBtn');
   if (btn) btn.textContent = 'Update Entry';
 
-  document.querySelector('.form-card')
-          .scrollIntoView({ behavior:'smooth', block:'nearest' });
+  document.querySelector('.form-card').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 function deleteRecord(id) {
-  if (!confirm('Are you sure you want to delete this ledger entry?')) return;
-  let dataStore = loadData().filter(item => String(item.id) !== String(id));
-  saveDataToStorage(dataStore);
-  render();
-  showToast('Entry deleted successfully.');
-  if (String(editId) === String(id)) cancelForm();
+  if (!confirm('Are you sure you want to delete this ledger entry from all devices?')) return;
+  
+  database.ref('ledger/' + id).remove((error) => {
+    if (error) {
+      showToast('Delete synchronization failed.', 'error');
+    } else {
+      showToast('Entry deleted globally.');
+      if (String(editId) === String(id)) cancelForm();
+    }
+  });
 }
 
 function cancelForm() {
@@ -291,14 +254,18 @@ function cancelForm() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  // Auto-repopulate today's default date string on form cancel actions
+  const today = new Date();
   const dateEl = document.getElementById('fDate');
-  if (dateEl) dateEl.value = '';
+  if (dateEl) {
+    dateEl.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  }
   const btn = document.getElementById('saveBtn');
   if (btn) btn.textContent = 'Save Entry';
 }
 
 // ══════════════════════════════════════════════════════════
-// 6. FORMAT HELPERS
+// 6. FORMAT MODULES
 // ══════════════════════════════════════════════════════════
 function php(n) {
   return '₱' + (n || 0).toLocaleString('en-PH', {
@@ -313,7 +280,7 @@ function fmtDate(str) {
 }
 
 // ══════════════════════════════════════════════════════════
-// 7. KPI CARDS
+// 7. DASHBOARD DATA AGGREGATION VIEW CONTROLLERS
 // ══════════════════════════════════════════════════════════
 function updateKPIs(rows) {
   const totFares  = rows.reduce((s,r) => s + r.fares,    0);
@@ -332,9 +299,6 @@ function updateKPIs(rows) {
   document.getElementById('kRemit').textContent  = php(totRemit) + ' remittance due';
 }
 
-// ══════════════════════════════════════════════════════════
-// 8. LEDGER TABLE
-// ══════════════════════════════════════════════════════════
 function renderLedger(rows) {
   const tbody = document.getElementById('ledgerBody');
   const tfoot = document.getElementById('ledgerFoot');
@@ -369,7 +333,6 @@ function renderLedger(rows) {
       </td>
     </tr>`).join('');
 
-  // Totals footer
   const totFares  = rows.reduce((s,r) => s + r.fares,    0);
   const totIncome = rows.reduce((s,r) => s + r.income,   0);
   const totCosts  = rows.reduce((s,r) => s + r.costs,    0);
@@ -390,9 +353,6 @@ function renderLedger(rows) {
   }
 }
 
-// ══════════════════════════════════════════════════════════
-// 9. CHART  (aggregated by active period)
-// ══════════════════════════════════════════════════════════
 function updateTrendChart(rows) {
   const ctx = document.getElementById('trendChart');
   if (!ctx || typeof Chart === 'undefined') return;
@@ -444,14 +404,8 @@ function updateTrendChart(rows) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: {
-          labels: { color: '#8a8f9d', font: { size: 12 } }
-        },
-        tooltip: {
-          callbacks: {
-            label: ctx => ' ₱' + ctx.parsed.y.toFixed(2)
-          }
-        }
+        legend: { labels: { color: '#8a8f9d', font: { size: 12 } } },
+        tooltip: { callbacks: { label: ctx => ' ₱' + ctx.parsed.y.toFixed(2) } }
       },
       scales: {
         x: {
@@ -468,35 +422,32 @@ function updateTrendChart(rows) {
   });
 }
 
-// ══════════════════════════════════════════════════════════
-// 10. CSV EXPORT
-// ══════════════════════════════════════════════════════════
 function exportCSV() {
-  const rows = loadData().map(calculateRecord)
-                         .sort((a,b) => a.date.localeCompare(b.date));
-  if (!rows.length) { showToast('No data to export.', 'error'); return; }
+  if (!globalDataStore.length) { showToast('No data to export.', 'error'); return; }
 
   const headers = ['Date','Total Fares','FP Income','Fuel','Food','Mobile Data',
                    'Maintenance','Other','Total Costs','Take-Home','Wallet',
                    'Remittance Due'];
   const lines = [headers.join(',')];
 
-  rows.forEach(r => {
-    lines.push([
-      r.date,
-      r.fares.toFixed(2),
-      r.income.toFixed(2),
-      r.gas.toFixed(2),
-      r.food.toFixed(2),
-      r.data.toFixed(2),
-      r.maint.toFixed(2),
-      r.other.toFixed(2),
-      r.costs.toFixed(2),
-      r.takeHome.toFixed(2),
-      r.wallet.toFixed(2),
-      r.remitted.toFixed(2)
-    ].join(','));
-  });
+  globalDataStore.map(calculateRecord)
+                 .sort((a,b) => a.date.localeCompare(b.date))
+                 .forEach(r => {
+                    lines.push([
+                      r.date,
+                      r.fares.toFixed(2),
+                      r.income.toFixed(2),
+                      r.gas.toFixed(2),
+                      r.food.toFixed(2),
+                      r.data.toFixed(2),
+                      r.maint.toFixed(2),
+                      r.other.toFixed(2),
+                      r.costs.toFixed(2),
+                      r.takeHome.toFixed(2),
+                      r.wallet.toFixed(2),
+                      r.remitted.toFixed(2)
+                    ].join(','));
+                  });
 
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const url  = URL.createObjectURL(blob);
@@ -509,23 +460,22 @@ function exportCSV() {
 }
 
 // ══════════════════════════════════════════════════════════
-// 11. MASTER RENDER
+// 8. MASTER PIPELINE DATA RENDERER
 // ══════════════════════════════════════════════════════════
-function render() {
-  const rows = loadData()
+function processAndRender(rawList) {
+  const processedRows = rawList
     .map(calculateRecord)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  updateKPIs(rows);
-  renderLedger(rows);
-  updateTrendChart(rows);
+  updateKPIs(processedRows);
+  renderLedger(processedRows);
+  updateTrendChart(processedRows);
 }
 
 // ══════════════════════════════════════════════════════════
-// 12. INIT
+// 9. OVER-THE-AIR LIVE SYNCHRONIZATION EVENT STREAM
 // ══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-  // Set today's date in the form by default
   const today = new Date();
   const y = today.getFullYear();
   const m = String(today.getMonth() + 1).padStart(2, '0');
@@ -533,5 +483,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const dateEl = document.getElementById('fDate');
   if (dateEl) dateEl.value = `${y}-${m}-${d}`;
 
-  render();
+  // Attaching active real-time data streaming pipe from Firebase Cloud node root path
+  database.ref('ledger').on('value', (snapshot) => {
+    const rawData = snapshot.val();
+    const parsedList = [];
+    
+    if (rawData) {
+      Object.keys(rawData).forEach(key => {
+        parsedList.push(rawData[key]);
+      });
+    }
+    
+    globalDataStore = parsedList; // Update local data cache
+    processAndRender(parsedList); // Refresh interface components instantly
+  });
 });

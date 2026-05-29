@@ -4,16 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Rider Financial Monitor</title>
+  
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0b0c10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2371/2371816.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
 <div class="container">
 
-  <!-- ── HEADER ── -->
   <header class="header">
     <div class="header-left">
       <div class="brand">
@@ -30,7 +40,6 @@
     </div>
   </header>
 
-  <!-- ── KPI CARDS ── -->
   <section aria-label="Performance Overview">
     <p class="section-label">Performance Overview</p>
     <div class="kpi-grid">
@@ -57,7 +66,6 @@
     </div>
   </section>
 
-  <!-- ── FORM ── -->
   <section>
     <div class="form-header">
       <p class="section-label" style="margin:0">Log New Day</p>
@@ -105,7 +113,6 @@
     </div>
   </section>
 
-  <!-- ── LEDGER TABLE ── -->
   <section>
     <div class="table-header">
       <p class="section-label" style="margin:0">Daily Ledger</p>
@@ -133,23 +140,31 @@
     </div>
   </section>
 
-  <!-- ── CHART ── -->
   <section>
     <p class="section-label">Income vs Costs</p>
     <div class="chart-card">
       <div class="chart-wrap">
-        <canvas id="trendChart"
-          aria-label="Line chart comparing FP income and total operating costs per day.">
+        <canvas id="trendChart" aria-label="Line chart comparing FP income and total operating costs per day.">
           Income vs costs trend.
         </canvas>
       </div>
     </div>
   </section>
 
-</div><!-- /container -->
+</div>
 
 <div id="toast"></div>
 
 <script src="script.js"></script>
+<script>
+  // Dynamic background initialization of the Service Worker layer
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('Service Worker active:', reg.scope))
+        .catch(err => console.error('Registration failed:', err));
+    });
+  }
+</script>
 </body>
 </html>
