@@ -1,24 +1,21 @@
-// ==========================================
-// 1. CLOUD DATABASE INITIALIZATION
-// ==========================================
-const firebaseConfig = {
-  apiKey: "AIzaSyAlltxTLkvE44wbrkVQHOH0xeJKb_tbfUk",
-  authDomain: "rider-financial-monitor.firebaseapp.com",
-  databaseURL: "https://rider-financial-monitor-default-rtdb.asia-southeast1.firebasedatabase.app/",
-  projectId: "rider-financial-monitor",
-  storageBucket: "rider-financial-monitor.firebasestorage.app",
-  messagingSenderId: "743077826140",
-  appId: "1:743077826140:web:c64ec08887f60f2fd82099"
-};
+let editId          = null;
+let financialChart  = null;
+let activePeriod    = 'daily'; 
+let globalDataStore = []; 
 
-// Fire up safe instances of Firebase App and Database SDK
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
-
-let editId         = null;
-let financialChart = null;
-let activePeriod   = 'daily'; 
-let globalDataStore = []; // Unified real-time runtime state cache
+// ══════════════════════════════════════════════════════════
+// 1. BACKEND API DRIVER CONNECTIONS
+// ══════════════════════════════════════════════════════════
+async function fetchCloudData() {
+  try {
+    const response = await fetch('/api/ledger');
+    if (!response.ok) throw new Error('API fetch transaction failure');
+    globalDataStore = await response.json();
+    processAndRender(globalDataStore);
+  } catch (e) {
+    showToast('Failed to fetch data from SQL database.', 'error');
+  }
+}
 
 // ══════════════════════════════════════════════════════════
 // 2. VALIDATION & TOAST
@@ -61,9 +58,9 @@ function calculateRecord(record) {
   const other        = parseFloat(record.other)  || 0;
 
   const costs     = gas + food + dataExpense + maint + other;
-  const income    = kita * 0.98;          // Payments/Kita − 2%
+  const income    = kita * 0.98;          
   const takeHome  = income - costs;
-  const remitted  = wallet - income;      // Wallet − Total Income (Your exact rule)
+  const remitted  = wallet - income;      
 
   return {
     ...record,
@@ -150,21 +147,17 @@ function aggregateByPeriod(rows) {
 }
 
 // ══════════════════════════════════════════════════════════
-// 5. CLOUD DATABASE CRUD OPERATION HANDLERS
+// 5. SECURE FRONTEND CRUD HANDLERS
 // ══════════════════════════════════════════════════════════
-function saveEntry() {
+async function saveEntry() {
   const dateEl = document.getElementById('fDate');
   let date = dateEl ? dateEl.value.trim() : '';
 
   if (!date) {
     const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2,'0');
-    const d = String(today.getDate()).padStart(2,'0');
-    date = `${y}-${m}-${d}`;
+    date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   }
 
-  // FIXED: Check values safely and default to empty strings to avoid parsing NaN values directly
   const faresVal  = document.getElementById('fFares').value.trim();
   const walletVal = document.getElementById('fWallet').value.trim();
   const gasVal    = document.getElementById('fGas').value.trim();
@@ -202,26 +195,23 @@ function saveEntry() {
 
   const targetId = editId ? String(editId) : String(Date.now());
   
-  const record = {
-    id: targetId,
-    date,
-    fares,
-    wallet,
-    gas,
-    food,
-    data,
-    maint,
-    other
-  };
+  const record = { id: targetId, date, fares, wallet, gas, food, data, maint, other };
 
-  database.ref('ledger/' + targetId).set(record, (error) => {
-    if (error) {
-      showToast('Cloud connection error. Sync failed.', 'error');
-    } else {
-      showToast(editId ? 'Entry updated across all devices.' : 'Entry added to Cloud.');
-      cancelForm();
-    }
-  });
+  try {
+    const response = await fetch('/api/ledger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record)
+    });
+    
+    if (!response.ok) throw new Error('Failed API request execution path');
+    
+    showToast(editId ? 'SQL Database updated successfully.' : 'Entry added to SQL Database.');
+    cancelForm();
+    await fetchCloudData(); // Re-fetch the live rows
+  } catch (error) {
+    showToast('Failed to sync entry to SQL Cloud.', 'error');
+  }
 }
 
 function editRecord(id) {
@@ -244,23 +234,23 @@ function editRecord(id) {
   document.querySelector('.form-card').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
-// FIXED: Kept table configurations clean by matching exact parameter paths
-function deleteRecord(id) {
-  if (!confirm('Are you sure you want to delete this ledger entry from all devices?')) return;
+async function deleteRecord(id) {
+  if (!confirm('Are you sure you want to delete this entry from your SQL database?')) return;
   
-  database.ref('ledger/' + id).remove((error) => {
-    if (error) {
-      showToast('Delete synchronization failed.', 'error');
-    } else {
-      showToast('Entry deleted globally.');
-      if (String(editId) === String(id)) cancelForm();
-    }
-  });
+  try {
+    const response = await fetch(`/api/ledger?id=${id}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Delete API execution anomaly');
+    
+    showToast('Entry completely removed from SQL Server.');
+    if (String(editId) === String(id)) cancelForm();
+    await fetchCloudData();
+  } catch (error) {
+    showToast('Failed to delete row from SQL database.', 'error');
+  }
 }
 
 function cancelForm() {
   editId = null;
-  // FIXED: Explicitly removed missing fields from array parsing loops to avoid crashing on null pointers
   ['fFares','fWallet','fGas','fFood','fData','fMaint','fOther'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -291,7 +281,7 @@ function fmtDate(str) {
 }
 
 // ══════════════════════════════════════════════════════════
-// 7. DASHBOARD DATA AGGREGATION VIEW CONTROLLERS
+// 7. DASHBOARD VIEW RENDER CONTROLLERS
 // ══════════════════════════════════════════════════════════
 function updateKPIs(rows) {
   const totFares  = rows.reduce((s,r) => s + r.fares,    0);
@@ -484,28 +474,15 @@ function processAndRender(rawList) {
 }
 
 // ══════════════════════════════════════════════════════════
-// 9. OVER-THE-AIR LIVE SYNCHRONIZATION EVENT STREAM
+// 9. RE-INITIALIZATION ENGINE
 // ══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, '0');
-  const d = String(today.getDate()).padStart(2, '0');
   const dateEl = document.getElementById('fDate');
-  if (dateEl) dateEl.value = `${y}-${m}-${d}`;
+  if (dateEl) {
+    dateEl.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  }
 
-  // Attaching active real-time data streaming pipe from Firebase Cloud node root path
-  database.ref('ledger').on('value', (snapshot) => {
-    const rawData = snapshot.val();
-    const parsedList = [];
-    
-    if (rawData) {
-      Object.keys(rawData).forEach(key => {
-        parsedList.push(rawData[key]);
-      });
-    }
-    
-    globalDataStore = parsedList; // Update local data cache
-    processAndRender(parsedList); // Refresh interface components instantly
-  });
+  // Trigger initial database pull over HTTPS
+  fetchCloudData();
 });
